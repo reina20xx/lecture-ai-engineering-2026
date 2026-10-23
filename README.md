@@ -68,7 +68,7 @@ pyproject.toml / uv.lock  依存パッケージとその固定版
 
 - **依存パッケージの版は固定**しています（`uv.lock`。Python 3.12、pydantic-ai-slim 2.57.0、google-genai 2.31.0）。講座の期間中は上げません。`uv sync --frozen` でそのまま入れてください。
 - **既定のモデルは `gemini-3.5-flash-lite`** です。環境変数 `AIE_MODEL` で切り替えられます（下の「モデルの切り替え」）。ほかのモデルや自前契約の API を使ってもかまいません
-- **Gemini API の無料枠にはレート制限**があります。エージェント（第3回以降）は 1 つの質問で LLM を複数回呼ぶので、第1回より早く上限に達します。`レート制限に達しました` と出たら 1 分ほど待ってください。`モデルが混み合っています（503）` が続くときは `AIE_MODEL=gemini-3.1-flash-lite` を試してください
+- **Gemini API の無料枠にはレート制限**があります。エージェント（第3回以降）は 1 つの質問で LLM を複数回呼ぶので、第1回より早く上限に達します。上限はモデルや利用階層によって異なり、1 分あたり（RPM/TPM）・1 日あたりの制限があります。`レート制限に達しました` と出たら少し待ってください。`モデルが混み合っています（503）` が続くときは `AIE_MODEL=gemini-3.1-flash-lite` を試してください
 - **API キーは環境変数 `GEMINI_API_KEY` だけ**で渡します。コード・コミット・チャットに貼らないでください。漏れたら AI Studio で削除して作り直します
 - Codespaces からインターネットへは出られますが、外から Codespaces の中へは接続できません（ポート転送は既定で非公開）。第5回の MCP サーバーは Codespaces の中で動かします
 - テスト（`uv run pytest -q`）は API キーなしで動きます（LLM を呼ばない TestModel を使用）
@@ -87,4 +87,14 @@ pyproject.toml / uv.lock  依存パッケージとその固定版
 AIE_MODEL=gemini-3.5-flash uv run python -m app.ask "LoRAとは何ですか？"
 ```
 
-無料枠には1分あたり・1日あたりのリクエスト上限があります。上限は [Gemini API のレート制限のページ](https://ai.google.dev/gemini-api/docs/rate-limits) で確認してください。
+`app.ask` は応答時間と入出力トークン数を表示します。複数モデルと複数質問の全組み合わせを比較できます。
+
+```bash
+uv run python -m app.ask \
+  --model gemini-3.5-flash-lite --model gemini-3.5-flash \
+  --question "LoRAとは何ですか？" \
+  --question "RAGとは何ですか？" \
+  --pause 4
+```
+
+応答時間は API 呼び出しの前後をクライアント側で計測するため、ネットワークや混雑の影響も含み、モデル単体の処理時間ではありません。トークン数はこの実行で得た使用量で、残りの無料枠を示すものではありません。レート制限である 1 分あたりのリクエスト数・トークン数と 1 日あたりの上限は、モデルや利用階層によって異なります。比較結果と実行回数を [Gemini API のレート制限](https://ai.google.dev/gemini-api/docs/rate-limits) と照らし合わせてください。429 を受けると、追加呼び出しを避けるため残りの比較を中断します。`--pause` は呼び出し間隔を空けますが、制限回避を保証するものではありません。
