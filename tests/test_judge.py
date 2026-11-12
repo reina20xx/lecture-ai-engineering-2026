@@ -35,6 +35,10 @@ def test_overall_requires_all_required_criteria():
     assert overall({**base, "grounding": "unsure"}) == "unsure"
 
 
+def test_verdict_is_ordered_before_reason():
+    assert list(judge.CriterionVerdict.model_fields) == ["verdict", "reason"]
+
+
 def test_cases_and_rubric_are_consistent():
     cases = read_jsonl(DEFAULT_CASES)
     assert len(cases) == 10
