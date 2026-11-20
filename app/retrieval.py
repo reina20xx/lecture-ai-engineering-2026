@@ -138,6 +138,73 @@ def search(query: str) -> list[dict]:
         return [dict(row) for row in rows]
 
 
+def expand_with_neighbors(results: list[dict], radius: int = 1, source: Path = RAG_SOURCE) -> list[dict]:
+    """ベクトル検索の各ヒットに、同じ資料内の前後ページを重複なく追加する。"""
+    if radius < 0:
+        raise ValueError("radiusは0以上にしてください。")
+    if not results:
+        return []
+
+    documents = json.loads(source.read_text(encoding="utf-8"))
+    pages_by_document: dict[str, list[dict]] = {}
+    for document in documents:
+        if document["id"] not in RAG_DOCUMENT_IDS:
+            continue
+        document_pages = []
+        for section in document["content"]:
+            for page in section["content"]:
+                document_pages.append({
+                    "page_id": page["id"],
+                    "document_id": document["id"],
+                    "lecture": int(document["id"][3:5]),
+                    "document_title": document["title"],
+                    "section": section["section"],
+                    "title": page["title"],
+                    "page": page["page"],
+                    "content": page["content"],
+                })
+        pages_by_document[document["id"]] = document_pages
+
+    expanded = []
+    seen = set()
+    for seed in results:
+        seed_id = seed["page_id"]
+        if seed_id not in seen:
+            expanded.append(seed)
+            seen.add(seed_id)
+
+        document_pages = pages_by_document.get(seed.get("document_id"))
+        if not document_pages:
+            continue
+        positions = {page["page_id"]: index for index, page in enumerate(document_pages)}
+        seed_position = positions.get(seed_id)
+        if seed_position is None:
+            continue
+
+        for offset in range(-radius, radius + 1):
+            if offset == 0:
+                continue
+            neighbor_position = seed_position + offset
+            if neighbor_position < 0 or neighbor_position >= len(document_pages):
+                continue
+            neighbor = document_pages[neighbor_position]
+            neighbor_id = neighbor["page_id"]
+            if neighbor_id in seen:
+                continue
+            expanded.append({
+                **neighbor,
+                "relation": "previous" if offset < 0 else "next",
+                "neighbor_of": seed_id,
+            })
+            seen.add(neighbor_id)
+    return expanded
+
+
+def search_with_neighbors(query: str, radius: int = 1) -> list[dict]:
+    """ベクトル検索結果と、その前後ページを返す。"""
+    return expand_with_neighbors(search(query), radius=radius)
+
+
 def search_graph(query: str) -> dict:
     """ベクトル検索を入口に、前後ページと共通用語で候補を広げる。"""
     pages = {page["page_id"]: page for page in load_pages(RAG_SOURCE)}
@@ -202,7 +269,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="エージェントを使わず、講義資料の検索だけを実行する")
     parser.add_argument("query", help="調べたい内容")
     args = parser.parse_args()
-    for i, result in enumerate(search(args.query), 1):
+    for i, result in enumerate(search_with_neighbors(args.query), 1):
         print(f"\n{'=' * 60}\n検索結果 {i}\n{'=' * 60}")
         print(f"講義: {result['document_title']}")
         print(f"章: {result['section']}")

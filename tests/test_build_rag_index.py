@@ -54,3 +54,34 @@ def test_existing_index_survives_failed_rebuild(materials):
         build_index(source, database, rebuild=True, embedder=embed)
     assert database.read_bytes() == before
     assert not list(database.parent.glob(".rag-build-*"))
+
+
+def test_expand_search_results_adds_unique_neighbors(tmp_path, monkeypatch):
+    source = tmp_path / "lectures.json"
+    source.write_text(json.dumps([
+        {"id": "lec01-main", "title": "第1回", "content": [
+            {"section": "章", "content": [
+                {"id": "lec01-main-p001", "title": "前ページ", "page": 1, "content": "前"},
+                {"id": "lec01-main-p002", "title": "検索ページ", "page": 2, "content": "中"},
+                {"id": "lec01-main-p003", "title": "次ページ", "page": 3, "content": "次"},
+            ]}
+        ]}
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(retrieval, "RAG_DOCUMENT_IDS", ("lec01-main",))
+
+    seed = {
+        "page_id": "lec01-main-p002",
+        "document_id": "lec01-main",
+        "content": "中",
+        "distance": 0.1,
+    }
+    expanded = retrieval.expand_with_neighbors([seed], source=source)
+
+    assert [page["page_id"] for page in expanded] == [
+        "lec01-main-p002",
+        "lec01-main-p001",
+        "lec01-main-p003",
+    ]
+    assert len({page["page_id"] for page in expanded}) == 3
+    assert expanded[1]["relation"] == "previous"
+    assert expanded[1]["neighbor_of"] == "lec01-main-p002"
